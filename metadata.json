@@ -2,10 +2,11 @@
     "name": "FailedSS",
     "creator": "Shiwie",
     "description": "A simple module to alert you if healer failed SS",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "entry": "index.js",
     "requires": [
         "Amaterasu",
         "Vigilance"
     ]
+
 }
