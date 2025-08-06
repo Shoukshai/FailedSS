@@ -1,4 +1,5 @@
-import settings from "../../config";
+const settings = require("../../config");
+const utils = require("../../utils/utils")
 
 const ssCells = [
     { x: 111, y: 120, z: 92 }, { x: 111, y: 121, z: 92 }, { x: 111, y: 122, z: 92 }, { x: 111, y: 123, z: 92 },
@@ -15,7 +16,11 @@ let phaseThreeStartTime = 0;
 let hasAlertedAlready = false;
 let alertSoundThread = null;
 
-const alertText = new Text("&cSafe Spot!").setScale(5).setShadow(true)
+let lastUtilsCheck = 0;
+let cachedShouldRun = false;
+const UTILS_CHECK_INTERVAL = 1000;
+
+const alertText = new Text("&cSafe Spot!").setScale(5).setShadow(true);
 
 function getSafeSpotDetection() {
     return settings.archSafeSpotDetection | 0;
@@ -29,13 +34,62 @@ function isTimerDetection() {
     return getSafeSpotDetection() === 1;
 }
 
+function shouldModuleRun() {
+    const now = Date.now();
+
+    if (!settings.enabled) {
+        cachedShouldRun = false;
+        return false;
+    }
+
+    if (now - lastUtilsCheck > UTILS_CHECK_INTERVAL) {
+        lastUtilsCheck = now;
+
+        if (!utils.inDungeon) {
+            cachedShouldRun = false;
+            return false;
+        }
+
+        if (settings.enableArcher) {
+            if (!utils.isArcher && !utils.isEmpty) {
+                cachedShouldRun = false;
+                return false;
+            }
+        }
+
+        cachedShouldRun = true;
+    }
+
+    return cachedShouldRun;
+}
+
+function shouldSafeSpotBeActive() {
+    return shouldModuleRun() && settings.archSafeSpot;
+}
+
+function resetSafeSpotState() {
+    isP3Active = false;
+    totalLantern = 0;
+    previousBlockStates = {};
+    shouldShowAlert = false;
+    hasAlertedAlready = false;
+    phaseThreeStartTime = 0;
+
+    if (alertSoundThread) {
+        alertSoundThread.interrupt();
+        alertSoundThread = null;
+    }
+}
+
 register("chat", function() {
-    if (!settings.enabled || !settings.archSafeSpot) return;
+    if (!shouldSafeSpotBeActive()) return;
+
     isP3Active = true;
     totalLantern = 0;
     previousBlockStates = {};
     phaseThreeStartTime = Date.now();
     hasAlertedAlready = false;
+
     if (alertSoundThread) {
         alertSoundThread.interrupt();
         alertSoundThread = null;
@@ -43,28 +97,13 @@ register("chat", function() {
 }).setChatCriteria("[BOSS] Storm: I should have known that I stood no chance.");
 
 register("chat", function() {
-    if (!settings.enabled || !settings.archSafeSpot) return;
-    isP3Active = false;
-    totalLantern = 0;
-    previousBlockStates = {};
-    shouldShowAlert = false;
-    hasAlertedAlready = false;
-    if (alertSoundThread) {
-        alertSoundThread.interrupt();
-        alertSoundThread = null;
-    }
+    resetSafeSpotState();
 }).setChatCriteria("[BOSS] Goldor: Necron, forgive me.");
 
 register("worldUnload", function() {
-    isP3Active = false;
-    totalLantern = 0;
-    previousBlockStates = {};
-    shouldShowAlert = false;
-    hasAlertedAlready = false;
-    if (alertSoundThread) {
-        alertSoundThread.interrupt();
-        alertSoundThread = null;
-    }
+    resetSafeSpotState();
+    lastUtilsCheck = 0;
+    cachedShouldRun = false;
 });
 
 function isSeaLanternBlock(x, y, z) {
@@ -94,13 +133,13 @@ function triggerSafeSpotAlert() {
     if (shouldShowAlert) return;
     shouldShowAlert = true;
     hasAlertedAlready = true;
-    
+
     World.playSound("note.pling", 1, 1);
-    
+
     alertSoundThread = new Thread(() => {
         const alertDuration = settings.archSafeSpotLength || 1000;
         const startTime = Date.now();
-        
+
         while (Date.now() - startTime < alertDuration) {
             try {
                 Thread.sleep(10);
@@ -111,39 +150,42 @@ function triggerSafeSpotAlert() {
                 break;
             }
         }
-        
+
         shouldShowAlert = false;
         alertSoundThread = null;
     });
-    
+
     alertSoundThread.start();
 }
 
 register("step", function() {
-    if (!settings.enabled || !settings.archSafeSpot || !isP3Active || hasAlertedAlready) return;
+    if (!shouldSafeSpotBeActive() || !isP3Active || hasAlertedAlready) {
+        return;
+    }
 
     try {
         const currentTime = Date.now();
         const elapsedTimeSincePhaseThree = currentTime - phaseThreeStartTime;
 
-        for (let i = 0; i < ssCells.length; i++) {
-            const cell = ssCells[i];
-            const cellKey = cell.x + "," + cell.y + "," + cell.z;
+        if (isSeaLanternsDetection()) {
+            for (let i = 0; i < ssCells.length; i++) {
+                const cell = ssCells[i];
+                const cellKey = cell.x + "," + cell.y + "," + cell.z;
 
-            const isCurrentlySeaLantern = isSeaLanternBlock(cell.x, cell.y, cell.z);
-            const wasSeaLanternBefore = previousBlockStates[cellKey] || false;
+                const isCurrentlySeaLantern = isSeaLanternBlock(cell.x, cell.y, cell.z);
+                const wasSeaLanternBefore = previousBlockStates[cellKey] || false;
 
-            if (isCurrentlySeaLantern && !wasSeaLanternBefore) {
-                totalLantern++;
+                if (isCurrentlySeaLantern && !wasSeaLanternBefore) {
+                    totalLantern++;
+                }
+
+                previousBlockStates[cellKey] = isCurrentlySeaLantern;
             }
 
-            previousBlockStates[cellKey] = isCurrentlySeaLantern;
-        }
-
-        if (isSeaLanternsDetection()) {
-            const lanternThreshold = settings.archSafeSpotLanternsThreshold || 16;
+            const lanternThreshold = settings.archSafeSpotLanternsThreshold || 15;
             if (totalLantern >= lanternThreshold) {
                 triggerSafeSpotAlert();
+                return;
             }
         }
 
@@ -151,17 +193,36 @@ register("step", function() {
             const timerThresholdMs = (settings.archSafeSpotTimer || 35) * 1000;
             if (elapsedTimeSincePhaseThree >= timerThresholdMs) {
                 triggerSafeSpotAlert();
+                return;
             }
         }
-    } catch (e) {}
+    } catch (e) {
+    }
 }).setFps(10);
 
-register('renderOverlay', () => {
-    if (shouldShowAlert) {
-        alertText.draw((Renderer.screen.getWidth() - alertText.getWidth()) / 2, (Renderer.screen.getHeight() - alertText.getHeight()) / 2 - 2);
+register("renderOverlay", () => {
+    if (shouldShowAlert && shouldModuleRun()) {
+        alertText.draw(
+            (Renderer.screen.getWidth() - alertText.getWidth()) / 2,
+            (Renderer.screen.getHeight() - alertText.getHeight()) / 2 - 2
+        );
     }
 });
 
 export function getSSTransitions() {
-    return totalLantern;
+    return shouldModuleRun() ? totalLantern : 0;
+}
+
+export function getModuleState() {
+    return {
+        enabled: settings.enabled,
+        enableArcher: settings.enableArcher,
+        inDungeon: utils.inDungeon,
+        playerClass: utils.playerClass,
+        isArcher: utils.isArcher,
+        isEmpty: utils.isEmpty,
+        shouldRun: shouldModuleRun(),
+        isP3Active: isP3Active,
+        totalLantern: totalLantern
+    };
 }
