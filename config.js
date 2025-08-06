@@ -19,6 +19,14 @@ const defaults = new DefaultConfig("FailedSS", "data/settings.json")
         subcategory: "General",
         value: true
     })
+    .addSwitch({
+        configName: "enableArcher",
+        title: "Only for Arch",
+        description: "Enable the module only for archer.",
+        category: "General",
+        subcategory: "General",
+        value: true
+    })
     // Category: Archer Helper -> Subcategory: p3
     .addSwitch({
         configName: "archSafeSpot",
@@ -35,7 +43,7 @@ const defaults = new DefaultConfig("FailedSS", "data/settings.json")
         category: "Archer Helper",
         subcategory: "p3",
         options: [500, 5000],
-        value: 1000
+        value: 1500
     })
     .addDropDown({
         configName: "archSafeSpotDetection",
@@ -61,7 +69,7 @@ const defaults = new DefaultConfig("FailedSS", "data/settings.json")
         category: "Archer Helper",
         subcategory: "p3",
         options: [1, 30],
-        value: 17
+        value: 15
     })
 
 const config = new Settings("FailedSS", defaults, "data/ColorScheme.json", "FailedSS Settings")
