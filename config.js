@@ -1,7 +1,7 @@
 import Settings from "../Amaterasu/core/Settings"
 import DefaultConfig from "../Amaterasu/core/DefaultConfig"
 
-let version = "1.0.0";
+let version = "1.1.0";
 try {
     version = JSON.parse(FileLib.read("FailedSS", "metadata.json")).version || "1.0.0";
 } catch (e) {}
@@ -78,3 +78,4 @@ const config = new Settings("FailedSS", defaults, "data/ColorScheme.json", "Fail
     .apply();
 
 export default config.settings
+
