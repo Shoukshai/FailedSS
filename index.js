@@ -1,3 +1,3 @@
 import "./features/ArchHelper/safeSpots"
 
-import "./utils/playerLocation"
+import "./utils/utils"
